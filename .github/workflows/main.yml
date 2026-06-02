@@ -1,6 +1,10 @@
 name: RDP via Tailscale
 
 on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
       hours:
@@ -22,6 +26,11 @@ jobs:
     timeout-minutes: ${{ github.event.inputs.hours == '1' && '60' || github.event.inputs.hours == '2' && '120' || github.event.inputs.hours == '3' && '180' || github.event.inputs.hours == '4' && '240' || github.event.inputs.hours == '5' && '300' || '360' }}
     
     steps:
+    - name: ضبط مدة التشغيل تلقائياً
+      run: |
+        $hours = "${{ github.event.inputs.hours || '3' }}"
+        echo "DURATION_HOURS=$hours" >> $env:GITHUB_ENV
+
     - name: تمكين سطح المكتب البعيد
       run: |
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
@@ -126,7 +135,7 @@ jobs:
         Write-Host "  ║      $env:RDP_PASS" -ForegroundColor Green
         Write-Host "  ║                                                              ║" -ForegroundColor Yellow
         Write-Host "  ║  🚪 PORT: 3389                                              ║" -ForegroundColor Yellow
-        Write-Host "  ║  ⏱️  DURATION: ${{ github.event.inputs.hours }} hour(s)        ║" -ForegroundColor Yellow
+        Write-Host "  ║  ⏱️  DURATION: $env:DURATION_HOURS hour(s)        ║" -ForegroundColor Yellow
         Write-Host "  ╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Yellow
         Write-Host ""
         Write-Host "╔════════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
@@ -150,7 +159,7 @@ Server IP: $env:TAILSCALE_IP
 Port: 3389
 Username: $env:RDP_USER
 Password: $env:RDP_PASS
-Duration: ${{ github.event.inputs.hours }} hours
+Duration: $env:DURATION_HOURS hours
 ========================================
 How to connect:
 1. Open Remote Desktop Connection (mstsc)
@@ -165,7 +174,7 @@ How to connect:
 
     - name: الحفاظ على تشغيل السيرفر
       run: |
-        $hours = ${{ github.event.inputs.hours }}
+        $hours = $env:DURATION_HOURS
         $totalMinutes = $hours * 60
         
         Write-Host ""
