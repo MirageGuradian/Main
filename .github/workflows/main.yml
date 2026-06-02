@@ -43,7 +43,7 @@ jobs:
         $username = "rdpuser"
         $password = "WindowsRDP#2025!@#"
         net user $username /delete 2>$null
-        net user $username $password /add /expires:never /passwordchg:no
+        "Y" | net user $username $password /add /expires:never /passwordchg:no
         net localgroup Administrators $username /add
         net localgroup "Remote Desktop Users" $username /add
         echo "RDP_USER=$username" >> $env:GITHUB_ENV
