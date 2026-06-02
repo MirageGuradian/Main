@@ -42,10 +42,11 @@ jobs:
       run: |
         $username = "rdpuser"
         $password = "WindowsRDP#2025!@#"
-        net user $username /delete 2>$null
-        "Y" | net user $username $password /add /expires:never /passwordchg:no
-        net localgroup Administrators $username /add
-        net localgroup "Remote Desktop Users" $username /add
+        try { Remove-LocalUser -Name $username -ErrorAction SilentlyContinue } catch {}
+        $secPass = ConvertTo-SecureString $password -AsPlainText -Force
+        New-LocalUser -Name $username -Password $secPass -PasswordNeverExpires
+        Add-LocalGroupMember -Group "Administrators" -Member $username -ErrorAction SilentlyContinue
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username -ErrorAction SilentlyContinue
         echo "RDP_USER=$username" >> $env:GITHUB_ENV
         echo "RDP_PASS=$password" >> $env:GITHUB_ENV
         Write-Host "User created successfully!" -ForegroundColor Green
