@@ -1,0 +1,114 @@
+name: RDP via Tailscale
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 'عدد ساعات التشغيل (1-6)'
+        required: true
+        default: '3'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+          - '6'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+    - name: ضبط مدة التشغيل تلقائياً
+      run: |
+        $hours = '3'
+        echo "DURATION_HOURS=$hours" >> $env:GITHUB_ENV
+
+    - name: تمكين سطح المكتب البعيد
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+        netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+        netsh advfirewall firewall add rule name="RDP-Port" dir=in action=allow protocol=TCP localport=3389
+
+    - name: إنشاء مستخدم محلي
+      run: |
+        $username = "rdpuser"
+        $password = "WindowsRDP#2025!@#"
+        net user $username /delete 2>$null
+        net user $username $password /add /expires:never /passwordchg:no
+        net localgroup Administrators $username /add
+        net localgroup "Remote Desktop Users" $username /add
+        echo "RDP_USER=$username" >> $env:GITHUB_ENV
+        echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+        Write-Host "User created successfully!" -ForegroundColor Green
+
+    - name: تعطيل جدار الحماية و Windows Defender
+      run: |
+        Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableBlockAtFirstSeen $true -ErrorAction SilentlyContinue
+        Set-MpPreference -DisableIOAVProtection $true -ErrorAction SilentlyContinue
+        netsh advfirewall set allprofiles state off
+        Write-Host "Firewall and Defender disabled" -ForegroundColor Green
+
+    - name: تحميل وتثبيت Tailscale
+      run: |
+        Write-Host "Downloading Tailscale..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "$env:TEMP\tailscale.exe"
+        Start-Process -FilePath "$env:TEMP\tailscale.exe" -ArgumentList "/quiet" -Wait -NoNewWindow
+        Start-Sleep -Seconds 15
+        Write-Host "Tailscale installed" -ForegroundColor Green
+
+    - name: الاتصال بشبكة Tailscale
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+      run: |
+        Write-Host "Connecting to Tailscale..." -ForegroundColor Yellow
+        & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY --hostname="github-rdp-${{ github.run_id }}"
+        Start-Sleep -Seconds 10
+        $ts_ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+        echo "TAILSCALE_IP=$ts_ip" >> $env:GITHUB_ENV
+        Write-Host "Connected! IP: $ts_ip" -ForegroundColor Green
+
+    - name: تثبيت برامج إضافية
+      run: |
+        Write-Host "Installing Chrome..." -ForegroundColor Yellow
+        $chromeInstaller = "$env:TEMP\chrome_installer.exe"
+        Invoke-WebRequest -Uri "https://dl.google.com/chrome/install/latest/chrome_installer.exe" -OutFile $chromeInstaller -ErrorAction SilentlyContinue
+        Start-Process -FilePath $chromeInstaller -ArgumentList "/silent /install" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+        Write-Host "Installing 7-Zip..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7z2409-x64.exe" -OutFile "$env:TEMP\7zip.exe" -ErrorAction SilentlyContinue
+        Start-Process -FilePath "$env:TEMP\7zip.exe" -ArgumentList "/S" -Wait -NoNewWindow -ErrorAction SilentlyContinue
+        Write-Host "Additional software installed" -ForegroundColor Green
+
+    - name: عرض معلومات الاتصال
+      run: |
+        Write-Host ""
+        Write-Host "=== RDP CONNECTION INFO ===" -ForegroundColor Cyan
+        Write-Host "IP: $env:TAILSCALE_IP"
+        Write-Host "User: $env:RDP_USER"
+        Write-Host "Pass: $env:RDP_PASS"
+        Write-Host "Port: 3389"
+        Write-Host "Duration: 3 hours"
+        Write-Host "===========================" -ForegroundColor Cyan
+
+    - name: الحفاظ على تشغيل السيرفر
+      run: |
+        $totalMinutes = 180
+        Write-Host "SERVER IS NOW RUNNING for 3 hours!" -ForegroundColor Green
+        for ($i = $totalMinutes; $i -gt 0; $i--) {
+            $remainingHours = [math]::Floor($i / 60)
+            $remainingMinutes = $i % 60
+            $percentComplete = (($totalMinutes - $i) / $totalMinutes) * 100
+            Write-Progress -Activity "RDP Server Running" -Status "Time Left: $remainingHours h $remainingMinutes m" -PercentComplete $percentComplete
+            Start-Sleep -Seconds 60
+        }
+        Write-Host "Time's up! Server shutting down..." -ForegroundColor Red
