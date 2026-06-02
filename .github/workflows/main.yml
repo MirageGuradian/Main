@@ -23,7 +23,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: ${{ github.event.inputs.hours == '1' && '60' || github.event.inputs.hours == '2' && '120' || github.event.inputs.hours == '3' && '180' || github.event.inputs.hours == '4' && '240' || github.event.inputs.hours == '5' && '300' || '360' }}
+    timeout-minutes: 360
     
     steps:
     - name: ضبط مدة التشغيل تلقائياً
